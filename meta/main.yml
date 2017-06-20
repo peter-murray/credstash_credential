@@ -1,3 +1,26 @@
 ---
+galaxy_info:
+  author: Peter Murray
+  description: Ansible Module for CredStash to create secrets and perform lookups using stacks
+  license: Apache
+
+  min_ansible_version: 2.3.0
+  github_branch: master
+
+  platforms:
+    - name: Ubuntu
+      versions:
+       - all
+    - name: Debian
+      versions:
+        - all
+    - name: EL
+      versions:
+        - all
+
+  galaxy_tags:
+    - secrets
+    - credentials
+    - credstash
 
 dependencies: []
