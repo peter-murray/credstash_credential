@@ -3,6 +3,87 @@
 #TODO Add documentation
 #TODO Add support for context when storing
 
+DOCUMENTATION = '''
+---
+module: credstash_credential
+short_description: Manage CredStash credentials.
+description:
+     - Provides the ability to create, update and delete CredStash credentials
+options:
+    state:
+      description:
+        - Create or deregister/delete AMI.
+      required: false
+      default: 'present'
+      choices: [ 'absent', 'present' ]
+    version:
+      description:
+        - An optional version for the credential being stored. If not provided, autoversioning will be used
+      required: false
+    region:
+      description:
+        - The AWS region that the CredStash Dynamo table is in
+      required: false
+      default: 'eu-west-2'
+      choices: ['eu-west-1', 'eu-west-2', 'us-east-1', 'us-west-1']
+    table:
+      description:
+        - The name of the CredStash table
+      required: false
+      default: 'credential-store'
+    stack:
+      description:
+        - The name of the stack for the credential
+      required: false
+      default: None
+    name:
+      description:
+        - The name of the credential
+      required: true
+    secret:
+      description:
+        - The secret value being stored.
+      default: None
+    create_if_missing:
+      description:
+        - Flag for dynamically creating a secret if one is not present in CredStash
+      default: false
+    rotate:
+      description:
+        - Flag to allow for a secret value to be rotated.
+      required: false
+      default: false
+    secret_chars:
+      description:
+        - The character set to be used to generate a dynamic secret
+      default: 'letters_and_numbers'
+      choices: ['letters', 'letters_and_numbers', 'complex']
+    secret_length:
+      description:
+        - The length of the dynamic secret being generated
+      default: 12
+'''
+
+EXAMPLES = '''
+# Store a secret for the dev stack
+- credstash_credential:
+    state: present
+    name: my_credential
+    stack: dev
+    secret: xxxxxxxxxxxxxxx
+
+# Dynamically generate a secret
+- credstash_credential:
+    state: present
+    name: my.dynamic.credential
+    create_if_missing: yes
+
+# Delete a credential, all versions will be removed
+- credstash_credential:
+    state: absent
+    name: my.credential.to.delete
+'''
+
 CREDSTASH_INSTALLED = False
 try:
     import credstash
@@ -56,16 +137,22 @@ def rotate_credential(key, value, region, table, version=''):
     if not _version_provided(version):
         version = int(credstash.getHighestVersion(key, region=region, table=table)) + 1
         version = _pad_version(version)
-    # return {'version': version}
+
     credstash.putSecret(key, value, version, region=region, table=table)
     return _generate_result(key, changed=True, version=version)
-
 
 def store_credential(key, value, region, table, version=''):
     credstash.putSecret(key, value, version, region=region, table=table)
     result = _generate_result(key, changed=True, version=version)
     return result
 
+def update_credential(key, value, region, table):
+    existing = get_credential(key, region, table)
+
+    if existing == value:
+        return _generate_result(key)
+    else:
+        return rotate_credential(key, value, region, table)
 
 def delete_credential(key, region, table):
     changed = False
@@ -231,7 +318,10 @@ def main():
                     else:
                         module.fail_json(msg='Cannot rotate a credential when specifying a version that already exists for key')
                 else:
-                    result = _generate_result(key)
+                    if value is not None:
+                        result = update_credential(key, value, region, table)
+                    else:
+                        result = _generate_result(key)
             else:
                 secret = _generate_secret_value(value, create_password, password_length, password_type)
                 result = store_credential(key, secret, region, table, _pad_version(version))
